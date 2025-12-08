@@ -1,7 +1,7 @@
 from src.utils.gpu_utils import get_device, viam_to_tensor, tensor_to_viam
 import torch
-from viam.media.video import ViamImage
-from typing import List, Dict, Any
+from viam.media.video import ViamImage, CameraMimeType
+from typing import List, Dict, Any, Optional
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
 from viam.logging import getLogger
@@ -10,7 +10,7 @@ logger = getLogger(__name__)
 
 
 # classes to use functional transform as align with current transform registry on viam
-class FunctionalCrop(torch.nn.Module):
+class TransformCrop(torch.nn.Module):
     def __init__(
         self, x_min_px, y_min_px, x_max_px, y_max_px, overlay_crop_box=False
     ):  # store overlay_crop_box for display but not used in transform
@@ -24,7 +24,7 @@ class FunctionalCrop(torch.nn.Module):
         return F.crop(img, self.top, self.left, self.height, self.width)
 
 
-class FunctionalRotate(torch.nn.Module):
+class TransformRotate(torch.nn.Module):
     def __init__(self, angle_degs):
         super().__init__()
         self.angle = angle_degs
@@ -45,11 +45,11 @@ TRANSFORM_REGISTRY: Dict[str, Dict[str, Any]] = {
     },
     "grayscale": {"transform": T.Grayscale, "parser": lambda attrs: {}},
     "rotate": {
-        "transform": FunctionalRotate,
+        "transform": TransformRotate,
         "parser": lambda attrs: {"angle_degs": attrs["angle_degs"]},
     },
     "crop": {
-        "transform": FunctionalCrop,
+        "transform": TransformCrop,
         "parser": lambda attrs: {
             "x_min_px": attrs["x_min_px"],
             "y_min_px": attrs["y_min_px"],
@@ -134,7 +134,10 @@ class GPUTransformPipeline:
 
         return transform_pipeline
 
-    def transform(self, image: ViamImage) -> ViamImage:
-        tensor = viam_to_tensor(image).to(self.device)  # ViamImage to tensor
+    def transform(self, image: ViamImage, mime_type: Optional[str] = None) -> ViamImage:
+        if mime_type is None:
+            mime_type = CameraMimeType.JPEG  # default to jpeg
+
+        tensor = viam_to_tensor(image, device=self.device)  # ViamImage to tensor
         transformed = self.transforms(tensor)  # apply transforms
-        return tensor_to_viam(transformed)  # return converted viam image
+        return tensor_to_viam(transformed, mime_type)  # return converted viam image
